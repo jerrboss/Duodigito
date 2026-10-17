@@ -29,18 +29,6 @@ jobs:
           mkdir project
           unzip -o "$ARCHIVE" -d project
 
-      - name: Force Java 17 Compatibility in Configurations
-        run: |
-          find project -name "build.gradle*" | while read -r file; do
-            echo "Injecting Java 17 compatibility flags into $file"
-            sed -i 's/Version.VERSION_1_8/Version.VERSION_17/g' "$file"
-            sed -i 's/JavaVersion.VERSION_1_8/JavaVersion.VERSION_17/g' "$file"
-            sed -i 's/jvmTarget = "1.8"/jvmTarget = "17"/g' "$file"
-            sed -i "s/jvmTarget = '1.8'/jvmTarget = '17'/g" "$file"
-            sed -i 's/targetCompatibility = 1.8/targetCompatibility = 17/g' "$file"
-            sed -i 's/sourceCompatibility = 1.8/sourceCompatibility = 17/g' "$file"
-          done
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -54,11 +42,19 @@ jobs:
             exit 1
           fi
           cd "$(dirname "$SETTINGS")"
-          gradle clean assembleDebug --no-daemon
-
+          
+          # Переопределяем параметры компиляции через переменные окружения и аргументы Gradle
+          export GRADLE_OPTS="-Dorg.gradle.project.android.defaults.buildfeatures.buildconfig=true"
+          
+          gradle clean assembleDebug --no-daemon \
+            -Pandroid.experimental.jetbrains.kotlin.jvmTarget=17 \
+            -Pkotlin.compiler.jvmTarget=17 \
+            -Porg.gradle.project.android.compileOptions.sourceCompatibility=VERSION_17 \
+            -Porg.gradle.project.android.compileOptions.targetCompatibility=VERSION_17
+            
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Duodigito-debug-APK
-          path: project/**/app/build/outputs/apk/debug/app-debug.apk
+          path: project/**/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
