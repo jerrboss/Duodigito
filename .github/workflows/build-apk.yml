@@ -10,7 +10,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,11 +20,16 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Download and extract project
+      - name: Extract project archive
         run: |
-          unzip -o Duodigito-Android-Studio.zip -d project
-          echo "Project files:"
-          find project -maxdepth 3 -type f | head -40
+          ARCHIVE=$(find . -maxdepth 1 -type f -iname '*.zip' ! -iname '*Builder*' | head -1)
+          if [ -z "$ARCHIVE" ]; then
+            echo "Project ZIP not found. Upload Duodigito-Android-Studio.zip"
+            exit 1
+          fi
+          mkdir project
+          unzip -o "$ARCHIVE" -d project
+          find project -name settings.gradle.kts -print
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -33,12 +37,18 @@ jobs:
           gradle-version: '8.9'
 
       - name: Build APK
-        working-directory: project/Duodigito
-        run: gradle assembleDebug
+        run: |
+          SETTINGS=$(find project -name settings.gradle.kts | head -1)
+          if [ -z "$SETTINGS" ]; then
+            echo "Android project not found in archive"
+            exit 1
+          fi
+          cd "$(dirname "$SETTINGS")"
+          gradle assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Duodigito-debug-APK
-          path: project/Duodigito/app/build/outputs/apk/debug/app-debug.apk
+          path: project/**/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
