@@ -29,6 +29,36 @@ jobs:
           mkdir project
           unzip -o "$ARCHIVE" -d project
 
+      - name: Force Java 17 via Settings Injection
+        run: |
+          SETTINGS=$(find project -name settings.gradle.kts | head -1)
+          if [ -z "$SETTINGS" ]; then
+            echo "settings.gradle.kts not found"
+            exit 1
+          fi
+          
+          # Инжектируем глобальное правило совместимости с Java 17 для всех подпроектов
+          cat << 'EOF' >> "$SETTINGS"
+
+          gradle.lifecycle.beforeProject {
+              plugins.withType(com.android.build.gradle.BasePlugin::class.java) {
+                  extensions.configure(com.android.build.gradle.BaseExtension::class.java) {
+                      compileOptions {
+                          sourceCompatibility = JavaVersion.VERSION_17
+                          targetCompatibility = JavaVersion.VERSION_17
+                      }
+                  }
+              }
+              tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile::class.java).configureEach {
+                  kotlinOptions {
+                      jvmTarget = "17"
+                  }
+              }
+          }
+          EOF
+          
+          echo "Successfully injected Java 17 configuration into $SETTINGS"
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -37,21 +67,9 @@ jobs:
       - name: Build APK
         run: |
           SETTINGS=$(find project -name settings.gradle.kts | head -1)
-          if [ -z "$SETTINGS" ]; then
-            echo "Android project not found in archive"
-            exit 1
-          fi
           cd "$(dirname "$SETTINGS")"
-          
-          # Переопределяем параметры компиляции через переменные окружения и аргументы Gradle
-          export GRADLE_OPTS="-Dorg.gradle.project.android.defaults.buildfeatures.buildconfig=true"
-          
-          gradle clean assembleDebug --no-daemon \
-            -Pandroid.experimental.jetbrains.kotlin.jvmTarget=17 \
-            -Pkotlin.compiler.jvmTarget=17 \
-            -Porg.gradle.project.android.compileOptions.sourceCompatibility=VERSION_17 \
-            -Porg.gradle.project.android.compileOptions.targetCompatibility=VERSION_17
-            
+          gradle clean assembleDebug --no-daemon
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
