@@ -30,17 +30,6 @@ jobs:
           unzip -o "$ARCHIVE" -d project
           find project -name settings.gradle.kts -print
 
-      - name: Fix Java/Kotlin JVM Toolchain Target
-        run: |
-          # Находим все файлы build.gradle.kts в распакованном проекте
-          find project -name "build.gradle.kts" | while read -r file; do
-            echo "Fixing JVM target in $file"
-            # Принудительно меняем старую JavaVersion.VERSION_1_8 или 1.8 на 17
-            sed -i 's/JavaVersion.VERSION_1_8/JavaVersion.VERSION_17/g' "$file"
-            sed -i 's/compatibility = 1.8/compatibility = 17/g' "$file"
-            sed -i 's/jvmTarget = "1.8"/jvmTarget = "17"/g' "$file"
-          done
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -54,8 +43,14 @@ jobs:
             exit 1
           fi
           cd "$(dirname "$SETTINGS")"
-          chmod +x gradlew || true
-          gradle assembleDebug
+          
+          # Жестко заставляем Gradle собирать Java и Kotlin под одну версию 17
+          gradle assembleDebug \
+            -Pandroid.defaults.buildfeatures.buildconfig=true \
+            -Dorg.gradle.jvmargs="-Xmx2048m" \
+            -Pkotlin.compiler.jvmTarget=17 \
+            -Dorg.gradle.project.android.compileOptions.sourceCompatibility=VERSION_17 \
+            -Dorg.gradle.project.android.compileOptions.targetCompatibility=VERSION_17
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
