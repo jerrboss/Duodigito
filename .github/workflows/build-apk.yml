@@ -29,7 +29,7 @@ jobs:
           mkdir project
           unzip -o "$ARCHIVE" -d project
 
-      - name: Force Java 17 via Settings Injection
+      - name: Force Java 17 via Safe Settings Injection
         run: |
           SETTINGS=$(find project -name settings.gradle.kts | head -1)
           if [ -z "$SETTINGS" ]; then
@@ -37,27 +37,34 @@ jobs:
             exit 1
           fi
           
-          # Инжектируем глобальное правило совместимости с Java 17 для всех подпроектов
+          # Инжектируем чистый код без внешних зависимостей
           cat << 'EOF' >> "$SETTINGS"
 
           gradle.lifecycle.beforeProject {
-              plugins.withType(com.android.build.gradle.BasePlugin::class.java) {
-                  extensions.configure(com.android.build.gradle.BaseExtension::class.java) {
-                      compileOptions {
-                          sourceCompatibility = JavaVersion.VERSION_17
-                          targetCompatibility = JavaVersion.VERSION_17
-                      }
+              // Форсируем Java 17 для Android плагина через рефлексию
+              plugins.initOrderWithId {
+                  val ext = extensions.findByName("android")
+                  if (ext != null) {
+                      val compileOptions = ext.javaClass.getMethod("getCompileOptions").invoke(ext)
+                      val javaVersionEnum = Class.forName("org.gradle.api.JavaVersion")
+                      val v17 = javaVersionEnum.getField("VERSION_17").get(null)
+                      compileOptions.javaClass.getMethod("setSourceCompatibility", javaVersionEnum).invoke(compileOptions, v17)
+                      compileOptions.javaClass.getMethod("setTargetCompatibility", javaVersionEnum).invoke(compileOptions, v17)
                   }
               }
-              tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile::class.java).configureEach {
-                  kotlinOptions {
-                      jvmTarget = "17"
+              // Форсируем jvmTarget = 17 для всех задач компиляции Kotlin
+              tasks.configureEach {
+                  if (javaClass.name.startsWith("org.jetbrains.kotlin.gradle.tasks.KotlinCompile")) {
+                      try {
+                          val kOptions = javaClass.getMethod("getKotlinOptions").invoke(this)
+                          kOptions.javaClass.getMethod("setJvmTarget", String::class.java).invoke(kOptions, "17")
+                      } catch (e: Exception) {}
                   }
               }
           }
           EOF
           
-          echo "Successfully injected Java 17 configuration into $SETTINGS"
+          echo "Successfully injected reflection-safe Java 17 configuration"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
