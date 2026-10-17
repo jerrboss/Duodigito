@@ -31,10 +31,8 @@ jobs:
 
       - name: Force Java 17 Compatibility in Configurations
         run: |
-          # Находим все конфигурационные файлы build.gradle.kts и build.gradle
           find project -name "build.gradle*" | while read -r file; do
             echo "Injecting Java 17 compatibility flags into $file"
-            # Заменяем любые вариации таргета 1.8 на 17
             sed -i 's/Version.VERSION_1_8/Version.VERSION_17/g' "$file"
             sed -i 's/JavaVersion.VERSION_1_8/JavaVersion.VERSION_17/g' "$file"
             sed -i 's/jvmTarget = "1.8"/jvmTarget = "17"/g' "$file"
@@ -56,10 +54,7 @@ jobs:
             exit 1
           fi
           cd "$(dirname "$SETTINGS")"
-          
-          # Даем права на запуск локального градиента и чистим кэш
-          chmod +x gradlew || true
-          ./gradlew clean assembleDebug --no-daemon
+          gradle clean assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
